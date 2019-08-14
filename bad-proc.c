@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#include <t1ha.h>
 #include "slab.h"
 
 struct symline {
@@ -77,12 +78,51 @@ static bool getsymline(struct symline *S)
     return false;
 }
 
+#define FPMAP_FPTAG_BITS 32
+#define FPMAP_BENT_SIZE 24
+
+struct fpmap_bent {
+    uint64_t hi;  // extra hash to identify the symbol
+    uint32_t sym; // symbol name in the slab
+    uint32_t ref;
+    bool undefined;
+    const uint32_t fptag;
+};
+
+#include "fpmap.h"
+
+static struct slab slab;
+static struct fpmap *fpmap;
+
 int main()
 {
+    slab_init(&slab);
+    fpmap = fpmap_new(23);
     struct symline S = { NULL, };
     size_t cnt = 0;
-    while (getsymline(&S))
-	cnt += S.symlen + 1;
-    printf("%zu\n", cnt);
+    while (getsymline(&S)) {
+	uint64_t hi, lo = t1ha2_atonce128(&hi, S.sym, S.symlen, 0);
+	struct fpmap_bent *match[FPMAP_MAXFIND], *be;
+	size_t n = fpmap_find(fpmap, lo, match);
+	for (size_t i = 0; i < n; i++) {
+	    be = match[i];
+	    if (be->hi == hi)
+		goto found;
+	}
+	be = fpmap_insert(fpmap, lo);
+	assert(be);
+	be->hi = hi;
+	if (S.undefined) {
+	    be->sym = slab_put(&slab, S.sym, S.symlen + 1);
+	    be->undefined = true;
+	    cnt++;
+	}
+	continue;
+    found:
+	cnt -= (S.undefined < be->undefined);
+	be->undefined &= S.undefined;
+    }
+    printf("%zu bad_elf_symbols\n", cnt);
+    fpmap_free(fpmap), fpmap = NULL;
     return 0;
 }
