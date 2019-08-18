@@ -95,7 +95,6 @@ struct fpmap_bent {
 
 static struct slab slab;
 static struct fpmap *fpmap;
-static size_t badcnt;
 
 static void dosym(struct symline *S)
 {
@@ -112,11 +111,9 @@ static void dosym(struct symline *S)
     if (S->undefined) {
 	be->sym = slab_put(&slab, S->sym, S->symlen + 1);
 	be->undefined = true;
-	badcnt++;
     }
     return;
 found:
-    badcnt -= (S->undefined < be->undefined);
     be->undefined &= S->undefined;
 }
 
@@ -135,7 +132,11 @@ int main()
 	struct symline *tmp = S1;
 	S1 = S2, S2 = tmp;
     }
-    printf("%zu bad_elf_symbols\n", badcnt);
+    size_t iter = 0;
+    struct fpmap_bent *be;
+    while ((be = fpmap_next(fpmap, &iter)))
+	if (be->undefined)
+	    puts(slab_get(&slab, be->sym));
     fpmap_free(fpmap), fpmap = NULL;
     return 0;
 }
