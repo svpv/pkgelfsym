@@ -124,16 +124,16 @@ int main()
 {
     slab_init(&slab);
     fpmap = fpmap_new(23);
-    struct symline S1 = { NULL, };
-    struct symline S2 = { NULL, };
-    bool ok = getsymline(&S1);
+    struct symline *S1 = &(struct symline){ NULL };
+    struct symline *S2 = &(struct symline){ NULL };
+    bool ok = getsymline(S1);
     while (ok) {
-	ok = getsymline(&S2);
+	ok = getsymline(S2);
 	if (ok)
-	    fpmap_prefetch(fpmap, S2.lo);
-	dosym(&S1);
-	struct symline S3 = S1;
-	S1 = S2, S2 = S3;
+	    fpmap_prefetch(fpmap, S2->lo);
+	dosym(S1);
+	struct symline *tmp = S1;
+	S1 = S2, S2 = tmp;
     }
     printf("%zu bad_elf_symbols\n", badcnt);
     fpmap_free(fpmap), fpmap = NULL;
