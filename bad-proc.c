@@ -36,6 +36,7 @@ struct symline {
     char *sym;
     size_t symlen;
     bool undefined;
+    uint64_t lo, hi;
 };
 
 static bool getsymline(struct symline *S)
@@ -70,6 +71,7 @@ static bool getsymline(struct symline *S)
 	case 'G':
 	case 'S':
 	    S->undefined = (type == 'U');
+	    S->lo = t1ha2_atonce128(&S->hi, S->sym, S->symlen, 0);
 	    return true;
 	}
 	assert((type >= 'A' && type <= 'Z') ||
@@ -93,36 +95,47 @@ struct fpmap_bent {
 
 static struct slab slab;
 static struct fpmap *fpmap;
+static size_t badcnt;
+
+static void dosym(struct symline *S)
+{
+    struct fpmap_bent *match[FPMAP_MAXFIND], *be;
+    size_t n = fpmap_find(fpmap, S->lo, match);
+    for (size_t i = 0; i < n; i++) {
+	be = match[i];
+	if (be->hi == S->hi)
+	    goto found;
+    }
+    be = fpmap_insert(fpmap, S->lo);
+    assert(be);
+    be->hi = S->hi;
+    if (S->undefined) {
+	be->sym = slab_put(&slab, S->sym, S->symlen + 1);
+	be->undefined = true;
+	badcnt++;
+    }
+    return;
+found:
+    badcnt -= (S->undefined < be->undefined);
+    be->undefined &= S->undefined;
+}
 
 int main()
 {
     slab_init(&slab);
     fpmap = fpmap_new(23);
-    struct symline S = { NULL, };
-    size_t cnt = 0;
-    while (getsymline(&S)) {
-	uint64_t hi, lo = t1ha2_atonce128(&hi, S.sym, S.symlen, 0);
-	struct fpmap_bent *match[FPMAP_MAXFIND], *be;
-	size_t n = fpmap_find(fpmap, lo, match);
-	for (size_t i = 0; i < n; i++) {
-	    be = match[i];
-	    if (be->hi == hi)
-		goto found;
-	}
-	be = fpmap_insert(fpmap, lo);
-	assert(be);
-	be->hi = hi;
-	if (S.undefined) {
-	    be->sym = slab_put(&slab, S.sym, S.symlen + 1);
-	    be->undefined = true;
-	    cnt++;
-	}
-	continue;
-    found:
-	cnt -= (S.undefined < be->undefined);
-	be->undefined &= S.undefined;
+    struct symline S1 = { NULL, };
+    struct symline S2 = { NULL, };
+    bool ok = getsymline(&S1);
+    while (ok) {
+	ok = getsymline(&S2);
+	if (ok)
+	    fpmap_prefetch(fpmap, S2.lo);
+	dosym(&S1);
+	struct symline S3 = S1;
+	S1 = S2, S2 = S3;
     }
-    printf("%zu bad_elf_symbols\n", cnt);
+    printf("%zu bad_elf_symbols\n", badcnt);
     fpmap_free(fpmap), fpmap = NULL;
     return 0;
 }
