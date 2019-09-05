@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <t1ha.h>
+#include <fp47map.h>
 #include "slab.h"
 
 struct symline {
@@ -80,63 +81,65 @@ static bool getsymline(struct symline *S)
     return false;
 }
 
-#define FPMAP_FPTAG_BITS 32
-#define FPMAP_BENT_SIZE 24
-
-struct fpmap_bent {
-    uint64_t hi;  // extra hash to identify the symbol
-    uint32_t sym; // symbol name in the slab
+// The hash table maps symbol names to these records.
+struct rec {
+    uint32_t hi32; // extra hash to recheck the symbol name
+    uint32_t sym;  // symbol name in the slab
     uint32_t ref;
     bool undefined;
-    const uint32_t fptag;
 };
 
-#include "fpmap.h"
+struct rec recs[1<<23];
+unsigned nrec;
 
 static struct slab slab;
-static struct fpmap *fpmap;
+static struct fp47map *map;
 
 static void dosym(struct symline *S)
 {
-    struct fpmap_bent *match[FPMAP_MAXFIND], *be;
-    size_t n = fpmap_find(fpmap, S->lo, match);
-    for (size_t i = 0; i < n; i++) {
-	be = match[i];
-	if (be->hi == S->hi)
+    struct rec *R;
+    uint32_t mpos[FP47MAP_MAXFIND];
+    unsigned n = fp47map_find(map, S->lo, mpos);
+    for (unsigned i = 0; i < n; i++) {
+	R = &recs[mpos[i]];
+	if (R->hi32 == (uint32_t) S->hi)
 	    goto found;
     }
-    be = fpmap_insert(fpmap, S->lo);
-    assert(be);
-    be->hi = S->hi;
+    R = &recs[nrec];
+    int rc = fp47map_insert(map, S->lo, nrec++);
+    assert(rc >= 0);
+    R->hi32 = S->hi;
     if (S->undefined) {
-	be->sym = slab_put(&slab, S->sym, S->symlen + 1);
-	be->undefined = true;
+	R->sym = slab_put(&slab, S->sym, S->symlen + 1);
+	R->undefined = true;
     }
     return;
 found:
-    be->undefined &= S->undefined;
+    R->undefined &= S->undefined;
 }
 
 int main()
 {
     slab_init(&slab);
-    fpmap = fpmap_new(23);
+    map = fp47map_new(22);
     struct symline *S1 = &(struct symline){ NULL };
     struct symline *S2 = &(struct symline){ NULL };
     bool ok = getsymline(S1);
     while (ok) {
 	ok = getsymline(S2);
 	if (ok)
-	    fpmap_prefetch(fpmap, S2->lo);
+	    fp47map_prefetch(map, S2->lo);
 	dosym(S1);
 	struct symline *tmp = S1;
 	S1 = S2, S2 = tmp;
     }
     size_t iter = 0;
-    struct fpmap_bent *be;
-    while ((be = fpmap_next(fpmap, &iter)))
-	if (be->undefined)
-	    puts(slab_get(&slab, be->sym));
-    fpmap_free(fpmap), fpmap = NULL;
+    uint32_t *ppos;
+    while ((ppos = fp47map_next(map, &iter))) {
+	struct rec *R = &recs[*ppos];
+	if (R->undefined)
+	    puts(slab_get(&slab, R->sym));
+    }
+    fp47map_free(map), map = NULL;
     return 0;
 }
