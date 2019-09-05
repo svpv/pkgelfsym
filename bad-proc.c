@@ -83,10 +83,29 @@ static bool getsymline(struct symline *S)
 
 // The hash table maps symbol names to these records.
 struct rec {
-    uint32_t hi32; // extra hash to recheck the symbol name
-    uint32_t sym;  // symbol name in the slab
-    uint32_t ref;
-    bool undefined;
+    union {
+	uint64_t hi;
+	struct {
+	    uint64_t flags: 8;
+	    uint64_t hi56: 56; // extra hash to recheck the symbol name
+	};
+    };
+    union {
+	struct ext *ext; // external VLA, malloc'd
+	struct {
+	    uint32_t sym; // symbol name in the slab
+	    uint32_t ref; // undefined symbols reference pkg+file
+	};
+    };
+};
+
+#define RF_EXT   01
+#define RF_UNDEF 02
+
+struct ext {
+    uint32_t sym;
+    uint32_t n;
+    uint32_t ref[];
 };
 
 struct rec recs[1<<23];
@@ -95,6 +114,20 @@ unsigned nrec;
 static struct slab slab;
 static struct fp47map *map;
 
+uint32_t doref(struct symline *S)
+{
+    static uint32_t lastref, lastlen;
+    size_t len = S->sym - S->line - 3;
+    if (len == lastlen) {
+	const char *sym = slab_get(&slab, lastref);
+	if (memcmp(S->line, sym, len) == 0)
+	    return lastref;
+    }
+    lastref = slab_put(&slab, S->line, len + 1);
+    lastlen = len;
+    return lastref;
+}
+
 static void dosym(struct symline *S)
 {
     struct rec *R;
@@ -102,20 +135,55 @@ static void dosym(struct symline *S)
     unsigned n = fp47map_find(map, S->lo, mpos);
     for (unsigned i = 0; i < n; i++) {
 	R = &recs[mpos[i]];
-	if (R->hi32 == (uint32_t) S->hi)
+	if (R->hi >> 8 == S->hi >> 8)
 	    goto found;
     }
     R = &recs[nrec];
     int rc = fp47map_insert(map, S->lo, nrec++);
     assert(rc >= 0);
-    R->hi32 = S->hi;
+    R->hi = S->hi >> 8 << 8;
     if (S->undefined) {
+	R->hi |= RF_UNDEF;
 	R->sym = slab_put(&slab, S->sym, S->symlen + 1);
-	R->undefined = true;
+	R->ref = doref(S);
     }
     return;
-found:
-    R->undefined &= S->undefined;
+found:;
+    struct ext *E;
+    if (S->undefined) {
+	if (R->flags & RF_EXT) {
+	    E = R->ext;
+	    // Extentding an extrnal array.
+	    if ((E->n & (E->n - 1)) == 0) {
+		E = R->ext = realloc(E, sizeof(*E) + 2 * E->n * sizeof(*E->ref));
+		assert(E);
+	    }
+	    E->ref[E->n++] = doref(S);
+	}
+	else if (R->flags & RF_UNDEF) {
+	    // Transforming one undef into an array.
+	    uint32_t sym = R->sym, ref0 = R->ref;
+	    E = R->ext = malloc(sizeof(*E) + 2 * sizeof(*E->ref));
+	    assert(E);
+	    R->flags = RF_EXT;
+	    E->sym = sym;
+	    E->n = 2;
+	    E->ref[0] = ref0;
+	    E->ref[1] = doref(S);
+
+	}
+	// Otherwise S is satisfied by R.
+    }
+    else {
+	if (R->flags & RF_EXT) {
+	    // Shutting down the array.
+	    uint32_t sym = R->ext->sym;
+	    free(R->ext);
+	    R->sym = sym;
+	}
+	// We are completely satisfied.
+	R->flags = 0, R->ref = 0;
+    }
 }
 
 int main()
@@ -136,8 +204,19 @@ int main()
     uint32_t *ppos;
     while ((ppos = fp47map_next(map, &iter))) {
 	struct rec *R = &recs[*ppos];
-	if (R->undefined)
-	    puts(slab_get(&slab, R->sym));
+	if (R->flags & RF_EXT) {
+	    struct ext *E = R->ext;
+	    const char *sym = slab_get(&slab, E->sym);
+	    for (uint32_t i = 0; i < E->n; i++) {
+		const char *ref = slab_get(&slab, E->ref[i]);
+		printf("%s\t%s\n", ref, sym);
+	    }
+	}
+	else if (R->flags & RF_UNDEF) {
+	    const char *sym = slab_get(&slab, R->sym);
+	    const char *ref = slab_get(&slab, R->ref);
+	    printf("%s\t%s\n", ref, sym);
+	}
     }
     fp47map_free(map), map = NULL;
     return 0;
