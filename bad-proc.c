@@ -127,8 +127,7 @@ int main()
     bool ok = getsymline(S1);
     while (ok) {
 	ok = getsymline(S2);
-	if (ok)
-	    fp47map_prefetch(map, S2->lo);
+	fp47map_prefetch(map, S2->lo);
 	dosym(S1);
 	struct symline *tmp = S1;
 	S1 = S2, S2 = tmp;
