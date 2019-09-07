@@ -200,10 +200,8 @@ int main()
 	struct symline *tmp = S1;
 	S1 = S2, S2 = tmp;
     }
-    size_t iter = 0;
-    uint32_t *ppos;
-    while ((ppos = fp47map_next(map, &iter))) {
-	struct rec *R = &recs[*ppos];
+    for (unsigned i = 0; i < nrec; i++) {
+	struct rec *R = &recs[i];
 	if (R->flags & RF_EXT) {
 	    struct ext *E = R->ext;
 	    const char *sym = slab_get(&slab, E->sym);
