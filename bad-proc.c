@@ -108,7 +108,7 @@ struct ext {
     uint32_t ref[];
 };
 
-struct rec recs[1<<23];
+struct rec recs[10<<20];
 unsigned nrec;
 
 static struct slab slab;
