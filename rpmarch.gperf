@@ -28,7 +28,7 @@ static const struct ent *find(const char *str, size_t len);
 %define lookup-function-name find
 %readonly-tables
 %switch=1
-struct ent { char name[8]; unsigned char arch; };
+struct ent { char name[7]; unsigned char arch; };
 %%
 "noarch",  Arch_noarch
 "src",     Arch_noarch
