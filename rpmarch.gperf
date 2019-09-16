@@ -21,11 +21,11 @@
 %{
 #include <string.h>
 #include "arch.h"
-#pragma GCC visibility push(hidden)
+static const struct ent *find(const char *str, size_t len);
 %}
 %struct-type
 %compare-lengths
-%define lookup-function-name rpmarch_find
+%define lookup-function-name find
 %readonly-tables
 %switch=1
 struct ent { char name[8]; unsigned char arch; };
@@ -38,7 +38,6 @@ struct ent { char name[8]; unsigned char arch; };
 "aarch64", Arch_arm64
 "ppc64le", Arch_ppc64le
 %%
-#pragma GCC visibility pop
 #include "rpmarch.h"
 
 int rpmarch(const char *fname, unsigned len)
@@ -53,7 +52,7 @@ int rpmarch(const char *fname, unsigned len)
 	return -1;
     // %compare-lengths enables memcmp, no need to null-terminate
     const char *arch = dotarch + 1;
-    const struct ent *ent = rpmarch_find(arch, dotrpm - arch);
+    const struct ent *ent = find(arch, dotrpm - arch);
     if (!ent)
 	return -1;
     return ent->arch;
