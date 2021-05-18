@@ -25,11 +25,10 @@
 // items.  We assume that the data is ready to be processed (i.e. how to store
 // and fetch the data efficiently is another problem).
 
-#include <stdio.h>
-#include <stdbool.h>
 #include <t1ha.h>
 #include <fp47map.h>
 #include "slab.h"
+#include "errexit.h"
 
 struct symline {
     char *line;
@@ -114,7 +113,7 @@ unsigned nrec;
 static struct slab slab;
 static struct fp47map *map;
 
-uint32_t doref(struct symline *S)
+static uint32_t doref(struct symline *S)
 {
     static uint32_t lastref, lastlen;
     size_t len = S->sym - S->line - 3;
@@ -154,23 +153,19 @@ found:;
 	if (R->flags & RF_EXT) {
 	    E = R->ext;
 	    // Extentding an extrnal array.
-	    if ((E->n & (E->n - 1)) == 0) {
-		E = R->ext = realloc(E, sizeof(*E) + 2 * E->n * sizeof(*E->ref));
-		assert(E);
-	    }
+	    if ((E->n & (E->n - 1)) == 0)
+		E = R->ext = xrealloc(E, sizeof(*E) + 2 * E->n * sizeof(*E->ref));
 	    E->ref[E->n++] = doref(S);
 	}
 	else if (R->flags & RF_UNDEF) {
 	    // Transforming one undef into an array.
 	    uint32_t sym = R->sym, ref0 = R->ref;
-	    E = R->ext = malloc(sizeof(*E) + 2 * sizeof(*E->ref));
-	    assert(E);
+	    E = R->ext = xmalloc(sizeof(*E) + 2 * sizeof(*E->ref));
 	    R->flags = RF_EXT;
 	    E->sym = sym;
 	    E->n = 2;
 	    E->ref[0] = ref0;
 	    E->ref[1] = doref(S);
-
 	}
 	// Otherwise S is satisfied by R.
     }
