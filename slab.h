@@ -42,7 +42,7 @@ static inline void slab_reserve(struct slab *slab, size_t size)
 	slab_resize(slab, size);
 }
 
-static inline uint32_t slab_copy(struct slab *slab, void *src, size_t size)
+static inline uint32_t slab_copy(struct slab *slab, const void *src, size_t size)
 {
     uint32_t pos = slab->fill;
     memcpy(slab->base + pos, src, size);
@@ -50,13 +50,13 @@ static inline uint32_t slab_copy(struct slab *slab, void *src, size_t size)
     return pos;
 }
 
-static inline uint32_t slab_put(struct slab *slab, void *src, size_t size)
+static inline uint32_t slab_put(struct slab *slab, const void *src, size_t size)
 {
     slab_reserve(slab, size);
     return slab_copy(slab, src, size);
 }
 
-static inline void *slab_get(struct slab *slab, uint32_t pos)
+static inline void *slab_get(const struct slab *slab, uint32_t pos)
 {
     return slab->base + pos;
 }
