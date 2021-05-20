@@ -25,9 +25,9 @@
 // items.  We assume that the data is ready to be processed (i.e. how to store
 // and fetch the data efficiently is another problem).
 
-#include <t1ha.h>
 #include <fp47map.h>
 #include "slab.h"
+#include "symhash.h"
 #include "errexit.h"
 
 struct symline {
@@ -45,6 +45,10 @@ static bool getsymline(struct symline *S)
     ssize_t len;
     while ((len = getline(&S->line, &S->alloc, stdin)) >= 0) {
 	assert(len > 0);
+	if (S->alloc < (size_t) len + SYMHASH_PAD) {
+	    S->alloc = (size_t) len + SYMHASH_PAD;
+	    S->line = xrealloc(S->line, S->alloc);
+	}
 	char *end = &S->line[--len];
 	assert(*end == '\n');
 	*end = '\t';
@@ -71,7 +75,7 @@ static bool getsymline(struct symline *S)
 	case 'G':
 	case 'S':
 	    S->undefined = (type == 'U');
-	    S->lo = t1ha2_atonce128(&S->hi, S->sym, S->symlen, 0);
+	    S->lo = symhash(&S->hi, S->sym, S->symlen);
 	    return true;
 	}
 	assert((type >= 'A' && type <= 'Z') ||
