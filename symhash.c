@@ -81,15 +81,15 @@ static __attribute__((constructor)) void initIV(void)
 
 uint64_t symhash(uint64_t *hi, char *str, size_t len)
 {
-    Xmm X[2];
-    memcpy(X, IV, 32);
+    Xmm x = IV[0], y = IV[1];
     char *end = str + len;
     memset(end, 0, 32);
     do {
-	Xmm D[2];
-	memcpy(&D, str, 32);
+	Xmm dx, dy;
+	memcpy(&dx, str + 0, 16);
+	memcpy(&dy, str + 16, 16);
 	str += 32;
-	update(&X[0], &X[1], &D[0], &D[1]);
+	update(&x, &y, &dx, &dy);
     } while (str < end);
-    return final(hi, &X[0], &X[1]);
+    return final(hi, &x, &y);
 }
