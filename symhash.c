@@ -28,39 +28,31 @@
 #define Add(x, a) *x = _mm_add_epi64(*x, *a)
 #define Sub(x, a) *x = _mm_sub_epi64(*x, *a)
 #define Xor(x, a) *x = _mm_xor_si128(*x, *a)
-
-#define Shuf(x) *x = _mm_shuffle_epi32(*x, _MM_SHUFFLE(0, 1, 2, 3))
-
+#define Shuf3201(x) *x = _mm_shuffle_epi32(*x, _MM_SHUFFLE(1,0,2,3))
+#define Shuf2310(x) *x = _mm_shuffle_epi32(*x, _MM_SHUFFLE(0,1,3,2))
 #define Mul13(x, y) _mm_mul_epu32(*x, _mm_shuffle_epi32(*y, _MM_SHUFFLE(2,3,0,1)))
 #define Mul31(x, y) _mm_mul_epu32(*x, _mm_shuffle_epi32(*y, _MM_SHUFFLE(0,1,2,3)))
 
-#define F0 Xor
-#define F1 Sub
-#define F2 Sub
-#define F3 Add
-#define F4 Sub
-#define F5 Sub
-
 static inline void update(Xmm *x, Xmm *y, Xmm *dx, Xmm *dy)
 {
-    F0(x, dx);
-    F1(y, dy);
+    Xor(x, dx);
+    Xor(y, dy);
     Xmm mx = Mul13(x, y);
     Xmm my = Mul31(y, x);
-    Shuf(y);
-    F2(x, dy);
-    F3(y, dx);
-    Shuf(x);
-    F4(x, &mx);
-    F5(y, &my);
+    Shuf3201(y);
+    Add(x, dy);
+    Sub(y, dx);
+    Shuf2310(x);
+    Add(x, &mx);
+    Add(y, &my);
 }
 
 static inline uint64_t final(uint64_t *hi, Xmm *x, Xmm *y)
 {
     Xmm mx = Mul31(x, y);
     Xmm my = Mul13(y, x);
-    Shuf(x);
-    Shuf(y);
+    Shuf3201(x);
+    Shuf2310(y);
     Add(x, &mx);
     Sub(y, &my);
     Xor(x, y);
