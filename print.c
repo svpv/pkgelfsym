@@ -45,7 +45,10 @@ uint16_t *print_sym0(struct PkgRec *R, struct slab *slab, char **topsym)
 	    for (uint j = 0; j < nf; j++) {
 		uint fi = *fsym++;
 		const char *fname = slab_get(slab, R->fname[fi]);
-		printf("%s\t%c\t%s\n", fname, *T++, sym);
+		uint32_t pkgref;
+		memcpy(&pkgref, fname - 4, 4);
+		const char *pkgname = slab_get(slab, pkgref);
+		printf("%s.rpm\t%s\t%c\t%s\n", pkgname, fname, *T++, sym);
 	    }
 	}
     }
@@ -79,7 +82,10 @@ void print_sym1(struct PkgRec *R, struct slab *slab, uint16_t *fsym, char *T)
 	for (uint j = 0; j < nf; j++) {
 	    uint fi = *fsym++;
 	    const char *fname = slab_get(slab, R->fname[fi]);
-	    printf("%s\t%c\t%s\n", fname, *T++, s0);
+	    uint32_t pkgref;
+	    memcpy(&pkgref, fname - 4, 4);
+	    const char *pkgname = slab_get(slab, pkgref);
+	    printf("%s.rpm\t%s\t%c\t%s\n", pkgname, fname, *T++, s0);
 	}
     }
 }
@@ -94,10 +100,12 @@ int main(int argc, char **argv)
 	assert(fp);
 	uint32_t pkgname;
 	do {
-	    char *dot = strrchr(argv[i], '.');
+	    char *s = strrchr(argv[i], '/');
+	    s = s ? s + 1 : argv[i];
+	    char *dot = strrchr(s, '.');
 	    assert(dot);
 	    *dot = '\0';
-	    pkgname = slab_put(&slab, argv[i], dot - argv[i] + 1);
+	    pkgname = slab_put(&slab, s, dot - s + 1);
 	} while (0);
 	uint32_t reclen;
 	do {

@@ -39,7 +39,9 @@ static char *PkgRec_decodeFilenames(struct PkgRec *R, char *s, struct slab *slab
 	assert(len0 < sizeof s0);
 	memcpy(s0 + lcp, s, len + 1);
 	s += len + 1;
-	R->fname[i] = slab_put(slab, s0, len0 + 1);
+	slab_reserve(slab, 4 + len0 + 1);
+	slab_copy(slab, &pkgname, 4);
+	R->fname[i] = slab_copy(slab, s0, len0 + 1);
     }
     return s;
 }
