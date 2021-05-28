@@ -65,7 +65,7 @@ struct PkgRec *PkgRec_read(FILE *fp, struct slab *slab, uint32_t pkgname, uint32
     R->sym0 = (void *)(R->fname + h.n0files + 1);
     R->fsym = R->sym0 + h.nsym0[0] + h.nsym0[1];
     R->n0dup = R->fsym + h.nsym;
-    char *frenc = (void *)(R->n0dup + h.nsym0[0] + h.nsym0[1] + h.nsym1);
+    R->T = (void *)(R->n0dup + h.nsym0[0] + h.nsym0[1] + h.nsym1);
     // decode 16-bit integers
     nb = pfor16dec(src, srcEnd - src, R->sym0, nv16);
     assert(nb > 0);
@@ -73,11 +73,11 @@ struct PkgRec *PkgRec_read(FILE *fp, struct slab *slab, uint32_t pkgname, uint32
     delta16dec(R->sym0, h.nsym0[0] + h.nsym0[1]);
     dmask16dec(R->fsym, h.nsym, mag16(h.n0files));
     dzag16dec(R->n0dup, h.nsym0[0] + h.nsym0[1] + h.nsym1);
-    // decompress frenc segment
-    int inb = LZ4_decompress_safe(src, frenc, srcEnd - src, h.frenclen);
+    // decompress cdata/frenc segment
+    int inb = LZ4_decompress_safe(src, R->T, srcEnd - src, h.frenclen);
     assert((uint) inb == h.frenclen);
     // process frenc filenames
-    R->sym1frenc = PkgRec_decodeFilenames(R, frenc, slab, pkgname);
+    R->sym1frenc = PkgRec_decodeFilenames(R, R->T + h.nsym, slab, pkgname);
     // all done
     free(src0);
     return R;

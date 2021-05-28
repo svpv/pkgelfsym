@@ -31,6 +31,7 @@ uint16_t *print_sym0(struct PkgRec *R, struct slab *slab, char **topsym)
     uint16_t *sym0 = R->sym0;
     uint16_t *n0dup = R->n0dup;
     uint16_t *fsym = R->fsym;
+    char *T = R->T;
     uint nsym = R->h.nsym0[0];
     for (uint k = 0; k < 2; k++) {
 	if (k) {
@@ -44,7 +45,7 @@ uint16_t *print_sym0(struct PkgRec *R, struct slab *slab, char **topsym)
 	    for (uint j = 0; j < nf; j++) {
 		uint fi = *fsym++;
 		const char *fname = slab_get(slab, R->fname[fi]);
-		printf("%s\t%s\n", fname, sym);
+		printf("%s\t%c\t%s\n", fname, *T++, sym);
 	    }
 	}
     }
@@ -52,7 +53,7 @@ uint16_t *print_sym0(struct PkgRec *R, struct slab *slab, char **topsym)
 }
 
 
-void print_sym1(struct PkgRec *R, struct slab *slab, uint16_t *fsym)
+void print_sym1(struct PkgRec *R, struct slab *slab, uint16_t *fsym, char *T)
 {
     char s0[8192];
     size_t len0 = 0, lcp = 0;
@@ -78,7 +79,7 @@ void print_sym1(struct PkgRec *R, struct slab *slab, uint16_t *fsym)
 	for (uint j = 0; j < nf; j++) {
 	    uint fi = *fsym++;
 	    const char *fname = slab_get(slab, R->fname[fi]);
-	    printf("%s\t%s\n", fname, s0);
+	    printf("%s\t%c\t%s\n", fname, *T++, s0);
 	}
     }
 }
@@ -110,7 +111,7 @@ int main(int argc, char **argv)
 	assert(R);
 	uint16_t *fsym =
 	print_sym0(R, &slab, topsym);
-	print_sym1(R, &slab, fsym);
+	print_sym1(R, &slab, fsym, R->T + (fsym - R->fsym));
     }
     free(topsym);
     return 0;

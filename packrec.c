@@ -65,7 +65,7 @@ static inline unsigned mag16(uint16_t x)
     return log2i(2 * x + 1);
 }
 
-// Usage: $0 pkg.sym0i pkg.fsym pkg.n0dup pkg.frenc
+// Usage: $0 pkg.sym0i pkg.fsym pkg.n0dup pkg.cdata
 int main(int argc, char **argv)
 {
     assert(argc == 1 + 4);
@@ -113,7 +113,7 @@ int main(int argc, char **argv)
 	out += n;
     }
     {
-	// frenc
+	// cdata
 	stdin = freopen(argv[4], "r", stdin);
 	assert(stdin);
 	size_t n = fread(out, 1, oend - out, stdin);

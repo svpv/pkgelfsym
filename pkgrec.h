@@ -15,6 +15,7 @@ struct PkgRec {
     uint16_t *sym0; // decoded sym0 integers
     uint16_t *fsym; // file reference for each symbol
     uint16_t *n0dup; // dup count for each unique symbol - 1
+    char *T; // symbol type, as shown by nm(1)
     char *sym1frenc; // frenc-mini blob, LZ-decompressed
     uint32_t sym1frenclen;
     uint32_t fname[]; // maps file references into slab
