@@ -99,22 +99,24 @@ int main(int argc, char **argv)
 	FILE *fp = fopen(argv[i], "r");
 	assert(fp);
 	uint32_t pkgname;
-	do {
+	{
 	    char *s = strrchr(argv[i], '/');
 	    s = s ? s + 1 : argv[i];
 	    char *dot = strrchr(s, '.');
 	    assert(dot);
 	    *dot = '\0';
 	    pkgname = slab_put(&slab, s, dot - s + 1);
-	} while (0);
+	}
 	uint32_t reclen;
-	do {
+	{
 	    struct stat st;
 	    int rc = fstat(fileno(fp), &st);
 	    assert(rc == 0);
+	    if (st.st_size == 0)
+		continue;
 	    assert(st.st_size > sizeof(struct PkgRecHdr));
 	    reclen = st.st_size - sizeof(struct PkgRecHdr);
-	} while (0);
+	}
 	struct PkgRec *R = PkgRec_read(fp, &slab, pkgname, reclen);
 	assert(R);
 	uint16_t *fsym =
