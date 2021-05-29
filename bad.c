@@ -1,5 +1,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
+#include <fp47map.h>
+#include "symhash.h"
 #include "pkgrec.h"
 #include "slab.h"
 #include "errexit.h"
@@ -56,12 +58,18 @@ struct Ext {
 struct Bad {
     struct slab slab;
     struct SymRec sym0rec[128<<10];
+    struct fp47map *map1;
+    struct SymRec *sym1rec;
+    uint32_t nsym1;
 };
 
 void Bad_init(struct Bad *B)
 {
     slab_init(&B->slab);
     memset(&B->sym0rec, 0, sizeof B->sym0rec);
+    B->map1 = fp47map_new(22);
+    B->sym1rec = NULL;
+    B->nsym1 = 0;
 }
 
 static void Bad_resolve0(struct SymRec *S, uint32_t fname, char T)
@@ -102,6 +110,49 @@ static void Bad_resolve0(struct SymRec *S, uint32_t fname, char T)
     }
 }
 
+static void Bad_resolve1(struct SymRec *S, uint32_t fname, char T,
+	struct slab *slab, const char *sym, size_t len)
+{
+    struct Ext *E;
+    if (T == 'U') {
+	if (S->flags & SF_EXT) {
+	    E = S->ext;
+	    // Extentding an extrnal array.
+	    if ((E->n & (E->n - 1)) == 0)
+		E = S->ext = xrealloc(E, sizeof(*E) + 2 * E->n * sizeof(*E->ref));
+	    E->ref[E->n++] = fname;
+	}
+	else if (S->flags & SF_UNDEF) {
+	    // Transforming single undef into an array.
+	    uint32_t sym = S->sym, ref0 = S->ref;
+	    E = S->ext = xmalloc(sizeof(*E) + 2 * sizeof(*E->ref));
+	    S->flags = SF_EXT;
+	    E->sym = sym;
+	    E->n = 2;
+	    E->ref[0] = ref0;
+	    E->ref[1] = fname;
+	}
+	else if (S->flags & SF_DEF) {
+	    // The undefined symbol is satisfied by S.
+	}
+	else {
+	    // First undefined symbol.
+	    S->flags = SF_UNDEF, S->ref = fname;
+	    S->sym = slab_put(slab, sym, len + 1);
+	}
+    }
+    else {
+	if (S->flags & SF_EXT) {
+	    // Shutting down the array.
+	    uint32_t sym = S->ext->sym;
+	    free(S->ext);
+	    S->sym = sym;
+	}
+	// We are completely satisfied.
+	S->flags = SF_DEF, S->ref = 0;
+    }
+}
+
 uint16_t *Bad_proc0(struct Bad *B, struct PkgRec *R)
 {
     uint16_t *sym0 = R->sym0;
@@ -131,6 +182,50 @@ uint16_t *Bad_proc0(struct Bad *B, struct PkgRec *R)
 
 void Bad_proc1(struct Bad *B, struct PkgRec *R, uint16_t *fsym, char *T)
 {
+    char s0[8192+SYMHASH_PAD];
+    size_t len0 = 0, lcp = 0;
+    uint16_t *n0dup = R->n0dup + R->h.nsym0[0] + R->h.nsym0[1];
+    char *s = R->sym1frenc;
+    uint nsym = R->h.nsym1;
+    for (uint i = 0; i < nsym; i++) {
+	if (likely(i)) {
+	    intptr_t delta = (int8_t) *s++;
+	    if (unlikely(delta == -128))
+		lcp = 0;
+	    else {
+		lcp += delta;
+		assert(lcp <= len0);
+	    }
+	}
+	size_t len = strlen(s);
+	len0 = lcp + len;
+	assert(len0 < sizeof s0 - SYMHASH_PAD);
+	memcpy(s0 + lcp, s, len + 1);
+	s += len + 1;
+	uint64_t hi, lo = symhash(&hi, s0, len0);
+	uint32_t mpos[FP47MAP_MAXFIND];
+	uint n = fp47map_find(B->map1, lo, mpos);
+	struct SymRec *S;
+	for (uint i = 0; i < n; i++) {
+	    S = &B->sym1rec[mpos[i]];
+	    if (S->hi >> 8 == hi >> 8)
+		goto found;
+	}
+	if ((B->nsym1 & (B->nsym1 + 1)) == 0)
+	    B->sym1rec = xrealloc(B->sym1rec, 2 * (B->nsym1 + 1) * sizeof(*B->sym1rec));
+	S = &B->sym1rec[B->nsym1];
+	int rc = fp47map_insert(B->map1, lo, B->nsym1++);
+	assert(rc >= 0);
+	memset(S, 0, sizeof *S);
+	S->hi = hi >> 8 << 8;
+found:;
+	uint nf = 1 + n0dup[i];
+	for (uint j = 0; j < nf; j++) {
+	    uint fi = *fsym++;
+	    uint32_t fname = R->fname[fi];
+	    Bad_resolve1(S, fname, *T++, &B->slab, s0, len0);
+	}
+    }
 }
 
 void Bad_print0(struct Bad *B)
@@ -162,6 +257,29 @@ void Bad_print0(struct Bad *B)
 
 void Bad_print1(struct Bad *B)
 {
+    uint32_t n = B->nsym1;
+    for (uint32_t i = 0; i < n; i++) {
+	struct SymRec *S = &B->sym1rec[i];
+	if (S->flags & SF_EXT) {
+	    struct Ext *E = S->ext;
+	    const char *sym = slab_get(&B->slab, E->sym);
+	    for (uint32_t i = 0; i < E->n; i++) {
+		const char *fname = slab_get(&B->slab, E->ref[i]);
+		uint32_t pkgref;
+		memcpy(&pkgref, fname - 4, 4);
+		const char *pkgname = slab_get(&B->slab, pkgref);
+		printf("%s.rpm\t%s\t%s\n", pkgname, fname, sym);
+	    }
+	}
+	else if (S->flags & SF_UNDEF) {
+	    const char *sym = slab_get(&B->slab, S->sym);
+	    const char *fname = slab_get(&B->slab, S->ref);
+	    uint32_t pkgref;
+	    memcpy(&pkgref, fname - 4, 4);
+	    const char *pkgname = slab_get(&B->slab, pkgref);
+	    printf("%s.rpm\t%s\t%s\n", pkgname, fname, sym);
+	}
+    }
 }
 
 int main(int argc, char **argv)
